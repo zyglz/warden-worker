@@ -102,6 +102,9 @@ jobs:
       - name: Replace D1_DATABASE_ID in wrangler.toml
         run: sed -i "s/\${D1_DATABASE_ID}/${{ secrets.D1_DATABASE_ID }}/g" wrangler.toml
 
+      - name: Replace ATTACHMENTS_KV_ID in wrangler.toml
+        run: sed -i "s/\${ATTACHMENTS_KV_ID}/${{ secrets.ATTACHMENTS_KV_ID }}/g" wrangler.toml
+
       - name: Enable R2 binding when R2_NAME is provided
         env:
           R2_NAME: ${{ secrets.R2_NAME }}
