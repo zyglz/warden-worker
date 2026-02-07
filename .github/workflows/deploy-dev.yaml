@@ -89,26 +89,26 @@ jobs:
         run: |
           bash scripts/apply-web-vault-overrides.sh public/web-vault
 
-      - name: Replace D1_DATABASE_ID_DEV in wrangler.toml
-        run: sed -i "s/\${D1_DATABASE_ID_DEV}/${{ secrets.D1_DATABASE_ID_DEV }}/g" wrangler.toml
+      - name: Replace D1_DATABASE_ID in wrangler.toml
+        run: sed -i "s/\${D1_DATABASE_ID}/${{ secrets.D1_DATABASE_ID }}/g" wrangler.toml
 
       - name: Replace ATTACHMENTS_KV_ID in wrangler.toml
         run: sed -i "s/\${ATTACHMENTS_KV_ID}/${{ secrets.ATTACHMENTS_KV_ID }}/g" wrangler.toml
 
-      - name: Enable R2 binding when R2_NAME_DEV is provided
+      - name: Enable R2 binding when R2_NAME is provided
         env:
-          R2_NAME_DEV: ${{ secrets.R2_NAME_DEV }}
+          R2_NAME: ${{ secrets.R2_NAME }}
         run: |
-          if [ -n "$R2_NAME_DEV" ]; then
-            echo "🔧 Enabling dev R2 bucket binding"
+          if [ -n "$R2_NAME" ]; then
+            echo "🔧 Enabling R2 bucket binding"
             {
               echo ''
-              echo '[[env.dev.r2_buckets]]'
+              echo '[[r2_buckets]]'
               echo 'binding = "ATTACHMENTS_BUCKET"'
-              echo "bucket_name = \"${R2_NAME_DEV}\""
+              echo "bucket_name = \"${R2_NAME}\""
             } >> wrangler.toml
           else
-            echo "⏭️ R2_NAME_DEV not set, skipping R2 binding"
+            echo "⏭️ R2_NAME not set, skipping R2 binding"
           fi
 
       - name: Bootstrap D1 schema when database is empty (dev)
@@ -118,7 +118,7 @@ jobs:
 
           # Capture raw wrangler output so jq parse errors don't hide the real failure.
           set +e
-          D1_OUT="$($WRANGLER d1 execute vault1 --env dev --remote --command \
+          D1_OUT="$($WRANGLER d1 execute vault1 --remote --command \
             "SELECT COUNT(*) AS cnt FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%' AND name NOT IN ('d1_migrations');" \
             --json 2>&1)"
           D1_STATUS=$?
@@ -139,7 +139,7 @@ jobs:
           echo "Existing app table count: ${TABLE_COUNT}"
           if [ "${TABLE_COUNT}" = "0" ]; then
             echo "🆕 Empty D1 database detected; applying sql/schema.sql..."
-            $WRANGLER d1 execute vault1 --env dev --remote --file sql/schema.sql
+            $WRANGLER d1 execute vault1 --remote --file sql/schema.sql
 
             echo "📝 Marking existing migrations as applied (schema.sql already includes them)"
             BOOTSTRAP_SQL="$(mktemp)"
@@ -155,7 +155,7 @@ jobs:
               echo "INSERT OR IGNORE INTO d1_migrations (name) VALUES ('$(basename "${f}")');" >>"${BOOTSTRAP_SQL}"
             done
 
-            $WRANGLER d1 execute vault1 --env dev --remote --file "${BOOTSTRAP_SQL}"
+            $WRANGLER d1 execute vault1 --remote --file "${BOOTSTRAP_SQL}"
             rm -f "${BOOTSTRAP_SQL}"
           else
             echo "⏭️ D1 already has tables; skipping base schema bootstrap"
@@ -173,7 +173,7 @@ jobs:
           while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
             echo "🔄 Attempting to apply migrations (attempt $((RETRY_COUNT + 1))/$MAX_RETRIES)..."
             
-            if $WRANGLER d1 migrations apply vault1 --env dev --remote 2>&1 | tee migration_output.txt; then
+            if $WRANGLER d1 migrations apply vault1 --remote 2>&1 | tee migration_output.txt; then
               echo "✅ All migrations applied successfully"
               exit 0
             fi
@@ -193,7 +193,7 @@ jobs:
               echo "📝 Marking migration as applied..."
               
               # Initialize d1_migrations table and mark this migration as applied
-              $WRANGLER d1 execute vault1 --env dev --remote --command "
+              $WRANGLER d1 execute vault1 --remote --command "
                 CREATE TABLE IF NOT EXISTS d1_migrations (
                   id INTEGER PRIMARY KEY AUTOINCREMENT,
                   name TEXT UNIQUE NOT NULL,
@@ -214,10 +214,10 @@ jobs:
           echo "❌ Max retries ($MAX_RETRIES) exceeded"
           exit 1
 
-      - name: Seed global equivalent domains (dev, optional)
+      - name: Seed global equivalent domains (optional)
         env:
           SEED_GLOBAL_DOMAINS: ${{ vars.SEED_GLOBAL_DOMAINS || 'true' }}
-          GLOBAL_DOMAINS_URL_DEV: ${{ vars.GLOBAL_DOMAINS_URL_DEV }}
+          GLOBAL_DOMAINS_URL: ${{ vars.GLOBAL_DOMAINS_URL }}
         run: |
           set -euo pipefail
           if [ "${SEED_GLOBAL_DOMAINS}" = "false" ]; then
@@ -225,10 +225,10 @@ jobs:
             exit 0
           fi
 
-          if [ -n "${GLOBAL_DOMAINS_URL_DEV:-}" ]; then
-            bash scripts/seed-global-domains.sh --db vault1 --env dev --remote --wrangler-version "${WRANGLER_VERSION}" --url "${GLOBAL_DOMAINS_URL_DEV}"
+          if [ -n "${GLOBAL_DOMAINS_URL:-}" ]; then
+            bash scripts/seed-global-domains.sh --db vault1 --remote --wrangler-version "${WRANGLER_VERSION}" --url "${GLOBAL_DOMAINS_URL}"
           else
-            bash scripts/seed-global-domains.sh --db vault1 --env dev --remote --wrangler-version "${WRANGLER_VERSION}"
+            bash scripts/seed-global-domains.sh --db vault1 --remote --wrangler-version "${WRANGLER_VERSION}"
           fi
 
       - uses: cloudflare/wrangler-action@v3
@@ -239,4 +239,4 @@ jobs:
           wranglerVersion: ${{ env.WRANGLER_VERSION }}
           packageManager: npm
 
-          command: deploy --env dev
+          command: deploy
